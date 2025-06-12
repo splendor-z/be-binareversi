@@ -18,5 +18,10 @@ services:
     image: busybox
     command: sh -c "sleep 1"
 
+  fe-binareversi:
+    build: ../fe-binareversi
+    ports:
+      - "5173:5173"
+
 volumes:
   air-config:
