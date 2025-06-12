@@ -1,0 +1,15 @@
+# Air の設定ファイル
+root = "."
+tmp_dir = "tmp"
+
+[build]
+  bin = "main"
+  cmd = "go build -buildvcs=false -o main ."
+  include_ext = ["go"]
+  exclude_dir = ["vendor", "tmp"]
+
+[log]
+  time = true
+
+[run]
+  cmd = "./main"

@@ -1,0 +1,22 @@
+version: '3.8'
+
+services:
+  be-binareversi:
+    build: .
+    ports:
+      - "8080:8080"
+    volumes:
+      - .:/app
+      - air-config:/root/.air
+    working_dir: /app
+    command: air
+    environment:
+      - AIR_CONFIG=.air.toml
+    depends_on:
+      - wait
+  wait:
+    image: busybox
+    command: sh -c "sleep 1"
+
+volumes:
+  air-config:
