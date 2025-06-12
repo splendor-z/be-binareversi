@@ -20,6 +20,11 @@ services:
     build: ../fe-binareversi
     ports:
       - "5173:5173"
+    working_dir: /app
+    volumes:
+      - ../fe-binareversi/app:/app
+      - node_modules:/app/node_modules
 
 volumes:
   air-config:
+  node_modules:
