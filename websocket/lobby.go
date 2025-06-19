@@ -47,7 +47,7 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 			roomID := msg["roomID"]
 			player := msg["player"]
 			if room, ok := model.Rooms[roomID]; ok && !room.IsFull {
-				room.Player2 = player
+				room.Player2 = &player
 				room.IsFull = true
 				lobbyBroadcast <- map[string]interface{}{"type": "room_updated", "room": room}
 			}
