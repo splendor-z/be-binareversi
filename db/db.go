@@ -31,6 +31,7 @@ func InitDatabase() {
 
 	// マイグレーション
 	err = database.AutoMigrate(&model.Room{})
+	err = database.AutoMigrate(&model.Player{})
 	if err != nil {
 		log.Fatalf("failed to migrate: %v", err)
 	}

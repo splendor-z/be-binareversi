@@ -15,11 +15,16 @@ func main() {
 
 	go func() {
 		for {
-			time.Sleep(5 * time.Minute) // 5分おきにチェック
-			if err := db.DeleteOldRooms(); err != nil {
+			time.Sleep(10 * time.Minute) // 10分おきにチェック
+			if err := db.DeleteOldRooms(360); err != nil {
 				log.Println("Failed to delete old rooms:", err)
 			} else {
 				log.Println("Old rooms cleanup completed.")
+			}
+			if err := db.DeleteInactivePlayers(720); err != nil {
+				log.Println("Failed to delete inactive players:", err)
+			} else {
+				log.Println("Inactive players cleanup completed.")
 			}
 		}
 	}()

@@ -27,7 +27,7 @@ func DeleteRoom(id string) error {
 	return DB.Delete(&model.Room{}, "id = ?", id).Error
 }
 
-func DeleteOldRooms() error {
-	threshold := time.Now().Add(-30 * time.Minute)
+func DeleteOldRooms(thresholdMinutes int) error {
+	threshold := time.Now().Add(-time.Duration(thresholdMinutes) * time.Minute)
 	return DB.Where("created_at < ?", threshold).Delete(&model.Room{}).Error
 }
