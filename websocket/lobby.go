@@ -1,28 +1,63 @@
 package websocket
 
 import (
+	"be-binareversi/db"
 	"be-binareversi/model"
 	"net/http"
+	"sync"
 
 	"github.com/gorilla/websocket"
 )
 
+// WebSocketクライアント管理
 var lobbyClients = map[*websocket.Conn]bool{}
 var lobbyBroadcast = make(chan interface{})
+var roomMu sync.RWMutex
+
+// レスポンス用構造体（IDではなくName）
+type RoomResponse struct {
+	ID      string `json:"id"`
+	Player1 string `json:"player1"`           // name
+	Player2 string `json:"player2,omitempty"` // name
+	IsFull  bool   `json:"isFull"`
+}
 
 func HandleLobby(w http.ResponseWriter, r *http.Request) {
 	conn, err := Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
 	}
-	defer conn.Close()
+	defer func() {
+		conn.Close()
+		delete(lobbyClients, conn)
+	}()
 
 	lobbyClients[conn] = true
 
-	roomList := make([]*model.Room, 0, len(model.Rooms))
+	// 現在のroom一覧を送信（名前付き）
+	roomMu.RLock()
+	roomList := []*RoomResponse{}
 	for _, room := range model.Rooms {
-		roomList = append(roomList, room)
+		player1, _ := db.GetPlayerByID(room.Player1)
+		player1Name := "unknown"
+		if player1 != nil {
+			player1Name = player1.Name
+		}
+		player2Name := ""
+		if room.Player2 != nil {
+			if p2, _ := db.GetPlayerByID(*room.Player2); p2 != nil {
+				player2Name = p2.Name
+			}
+		}
+		roomList = append(roomList, &RoomResponse{
+			ID:      room.ID,
+			Player1: player1Name,
+			Player2: player2Name,
+			IsFull:  room.IsFull,
+		})
 	}
+	roomMu.RUnlock()
+
 	conn.WriteJSON(map[string]interface{}{
 		"type":  "room_list",
 		"rooms": roomList,
@@ -31,25 +66,75 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 	for {
 		var msg map[string]string
 		if err := conn.ReadJSON(&msg); err != nil {
-			delete(lobbyClients, conn)
 			break
 		}
 
 		switch msg["type"] {
 		case "create_room":
 			roomID := msg["roomID"]
-			player := msg["player"]
-			room := &model.Room{ID: roomID, Player1: player, IsFull: false}
+			playerID := msg["playerID"]
+
+			player, err := db.GetPlayerByID(playerID)
+			if err != nil || player == nil {
+				conn.WriteJSON(map[string]string{"error": "invalid playerID"})
+				continue
+			}
+
+			roomMu.Lock()
+			if _, exists := model.Rooms[roomID]; exists {
+				roomMu.Unlock()
+				conn.WriteJSON(map[string]string{"error": "room already exists"})
+				continue
+			}
+
+			room := &model.Room{ID: roomID, Player1: playerID, IsFull: false}
 			model.Rooms[roomID] = room
-			lobbyBroadcast <- map[string]interface{}{"type": "room_created", "room": room}
+			db.CreateRoom(room)
+			roomMu.Unlock()
+
+			resp := RoomResponse{
+				ID:      roomID,
+				Player1: player.Name,
+				Player2: "",
+				IsFull:  false,
+			}
+			lobbyBroadcast <- map[string]interface{}{"type": "room_created", "room": resp}
 
 		case "join_room":
 			roomID := msg["roomID"]
-			player := msg["player"]
-			if room, ok := model.Rooms[roomID]; ok && !room.IsFull {
-				room.Player2 = &player
+			playerID := msg["player"]
+
+			player, err := db.GetPlayerByID(playerID)
+			if err != nil || player == nil {
+				conn.WriteJSON(map[string]string{"error": "invalid playerID"})
+				continue
+			}
+
+			roomMu.Lock()
+			room, ok := model.Rooms[roomID]
+			if ok && !room.IsFull {
+				room.Player2 = &playerID
 				room.IsFull = true
-				lobbyBroadcast <- map[string]interface{}{"type": "room_updated", "room": room}
+				db.UpdateRoom(room)
+				roomMu.Unlock()
+
+				player1, _ := db.GetPlayerByID(room.Player1)
+				player2 := player.Name
+				player1Name := "unknown"
+				if player1 != nil {
+					player1Name = player1.Name
+				}
+
+				resp := RoomResponse{
+					ID:      room.ID,
+					Player1: player1Name,
+					Player2: player2,
+					IsFull:  true,
+				}
+				lobbyBroadcast <- map[string]interface{}{"type": "room_updated", "room": resp}
+			} else {
+				roomMu.Unlock()
+				conn.WriteJSON(map[string]string{"error": "room not found or already full"})
 			}
 		}
 	}

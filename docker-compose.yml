@@ -5,14 +5,15 @@ services:
       - "8080:8080"
     volumes:
       - .:/app
+      - ./data:/app/data
       - air-config:/root/.air
-      - sqlite-data:/app/data
     working_dir: /app
     command: air
     environment:
       - AIR_CONFIG=.air.toml
     depends_on:
       - wait
+
   wait:
     image: busybox
     command: sh -c "sleep 1"
@@ -32,4 +33,3 @@ services:
 volumes:
   air-config:
   node_modules:
-  sqlite-data:

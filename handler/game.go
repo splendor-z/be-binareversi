@@ -8,5 +8,8 @@ import (
 
 func GameWebSocket(c *gin.Context) {
 	roomID := c.Param("roomID")
-	websocket.HandleGame(roomID, c.Writer, c.Request)
+	playerID := c.Param("playerID")
+
+	// WebSocketハンドラーにplayerIDを渡す
+	websocket.HandleGame(roomID, playerID, c.Writer, c.Request)
 }
