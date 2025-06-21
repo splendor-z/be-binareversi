@@ -83,11 +83,18 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 
 		switch typeVal {
 		case "join":
+			var boardToSend [8][8]int
+			if game.GetTurn() == playerColor {
+				boardToSend = game.GetBoardWithValidMoves(playerColor)
+			} else {
+				boardToSend = game.GetBoard()
+			}
+
 			conn.WriteJSON(map[string]interface{}{
 				"type":       "game_start",
 				"playerID":   playerID,
 				"yourColor":  playerColor,
-				"board":      game.GetBoard(),
+				"board":      boardToSend,
 				"isYourTurn": (game.GetTurn() == playerColor),
 			})
 
@@ -108,9 +115,16 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 
 			for c, pid := range gameClients[roomID] {
 				color := playerColors[roomID][pid]
+				var boardToSend [8][8]int
+				if game.GetTurn() == color {
+					boardToSend = game.GetBoardWithValidMoves(color)
+				} else {
+					boardToSend = board
+				}
+
 				c.WriteJSON(map[string]interface{}{
 					"type":       "board_update",
-					"board":      board,
+					"board":      boardToSend,
 					"isYourTurn": (game.GetTurn() == color),
 				})
 			}
