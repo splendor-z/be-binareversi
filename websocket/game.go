@@ -143,6 +143,14 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 				"moves_map": moves,
 			})
 
+		case "exit_room":
+			db.DeleteRoom(roomID) //ルームの削除
+			conn.WriteJSON(map[string]interface{}{
+				"type":     "exited_room",
+				"roomID":   roomID,
+				"playerID": playerID,
+			})
+
 		default:
 			conn.WriteJSON(map[string]string{"error": "unknown message type"})
 		}
