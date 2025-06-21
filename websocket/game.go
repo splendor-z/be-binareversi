@@ -2,6 +2,9 @@ package websocket
 
 import (
 	"be-binareversi/db"
+	"be-binareversi/libs/reversi"
+	"encoding/json"
+	"log"
 	"net/http"
 	"time"
 
@@ -9,9 +12,17 @@ import (
 )
 
 var gameClients = make(map[string]map[*websocket.Conn]string)
-var currentTurn = make(map[string]string)
+var gameInstances = make(map[string]*reversi.Game)
+var playerColors = make(map[string]map[string]int)
 
 func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.Request) {
+	defer func() {
+		if r := recover(); r != nil {
+			log.Printf("Recovered from panic in HandleGame: %v", r)
+			w.WriteHeader(http.StatusInternalServerError)
+		}
+	}()
+
 	conn, err := Upgrader.Upgrade(w, r, nil)
 	if err != nil {
 		return
@@ -24,13 +35,11 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 		return
 	}
 
-	// プレイヤー1 or プレイヤー2か確認
 	if playerID != room.Player1 && (room.Player2 == nil || playerID != *room.Player2) {
 		conn.WriteControl(websocket.CloseMessage,
 			websocket.FormatCloseMessage(websocket.CloseNormalClosure, "unauthorized player"),
 			time.Now().Add(time.Second),
 		)
-		conn.Close()
 		return
 	}
 
@@ -39,43 +48,89 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 	}
 	gameClients[roomID][conn] = playerID
 
-	// 初期ターン状態（黒番: Player1）
-	if _, exists := currentTurn[roomID]; !exists {
-		currentTurn[roomID] = room.Player1
+	if _, ok := gameInstances[roomID]; !ok {
+		gameInstances[roomID] = reversi.NewGame(roomID)
 	}
+	game := gameInstances[roomID]
+
+	if _, ok := playerColors[roomID]; !ok {
+		playerColors[roomID] = make(map[string]int)
+		playerColors[roomID][room.Player1] = reversi.Black
+		if room.Player2 != nil {
+			playerColors[roomID][*room.Player2] = reversi.White
+		}
+	}
+	playerColor := playerColors[roomID][playerID]
 
 	for {
-		var msg map[string]interface{}
-		if err := conn.ReadJSON(&msg); err != nil {
+		_, reader, err := conn.NextReader()
+		if err != nil {
 			delete(gameClients[roomID], conn)
 			break
 		}
 
-		switch msg["type"] {
+		var msg map[string]interface{}
+		if err := json.NewDecoder(reader).Decode(&msg); err != nil {
+			conn.WriteJSON(map[string]string{"error": "invalid JSON"})
+			continue
+		}
+
+		typeVal, ok := msg["type"].(string)
+		if !ok {
+			conn.WriteJSON(map[string]string{"error": "missing or invalid type"})
+			continue
+		}
+
+		switch typeVal {
 		case "join":
-			broadcastToRoom(roomID, map[string]interface{}{
-				"type":     "game_start",
-				"playerID": playerID,
+			conn.WriteJSON(map[string]interface{}{
+				"type":       "game_start",
+				"playerID":   playerID,
+				"yourColor":  playerColor,
+				"board":      game.GetBoard(),
+				"isYourTurn": (game.GetTurn() == playerColor),
 			})
 
 		case "move":
-			// ターン制御: 今のターンのプレイヤーかどうか
-			if currentTurn[roomID] != playerID {
-				conn.WriteJSON(map[string]string{"error": "not your turn"})
+			xRaw, xOk := msg["x"].(float64)
+			yRaw, yOk := msg["y"].(float64)
+			if !xOk || !yOk {
+				conn.WriteJSON(map[string]string{"error": "invalid x or y"})
+				continue
+			}
+			x, y := int(xRaw), int(yRaw)
+
+			board, err := game.PlaceDisc(playerColor, x, y)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"error": err.Error()})
 				continue
 			}
 
-			// 石を置く処理（盤面更新など）ここで入れる
-			// ...
-
-			// ターン交代
-			if room.Player2 != nil && playerID == room.Player1 {
-				currentTurn[roomID] = *room.Player2
-			} else {
-				currentTurn[roomID] = room.Player1
+			for c, pid := range gameClients[roomID] {
+				color := playerColors[roomID][pid]
+				c.WriteJSON(map[string]interface{}{
+					"type":       "board_update",
+					"board":      board,
+					"isYourTurn": (game.GetTurn() == color),
+				})
 			}
 
-			broadcastToRoom(roomID, msg)
+			if game.IsGameOver() {
+				broadcastToRoom(roomID, map[string]interface{}{
+					"type":   "game_over",
+					"winner": game.GetWinner(),
+				})
+			}
+
+		case "get_valid_moves":
+			moves := game.GetValidMovesMap(playerColor)
+			conn.WriteJSON(map[string]interface{}{
+				"type":      "valid_moves",
+				"moves_map": moves,
+			})
+
+		default:
+			conn.WriteJSON(map[string]string{"error": "unknown message type"})
 		}
 	}
 }
