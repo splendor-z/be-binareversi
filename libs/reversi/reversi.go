@@ -246,3 +246,19 @@ func (g *Game) PrintBoardWithMovesMap(movesMap [8][8]int) {
 	}
 	fmt.Println()
 }
+
+// 合法手込みの盤面を返す（合法手=9、それ以外は通常の盤面）
+// @param player プレイヤーの色
+// @return [8][8]int 合法手を含む盤面
+func (g *Game) GetBoardWithValidMoves(player int) [8][8]int {
+	board := g.Board // コピーされる
+	movesMap := g.GetValidMovesMap(player)
+	for x := 0; x < 8; x++ {
+		for y := 0; y < 8; y++ {
+			if movesMap[x][y] == 9 && board[x][y] == Empty {
+				board[x][y] = 9
+			}
+		}
+	}
+	return board
+}
