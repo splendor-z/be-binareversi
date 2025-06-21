@@ -15,6 +15,9 @@ import (
 var gameClients = make(map[string]map[*websocket.Conn]string)
 var gameInstances = make(map[string]*reversi.Game)
 var playerColors = make(map[string]map[string]int)
+var playerPassCounts = make(map[string]map[string]int)
+var lastPassPlayer = make(map[string]string)
+var playerOperatorCounts = make(map[string]map[string]map[string]int)
 
 func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.Request) {
 	defer func() {
@@ -142,6 +145,19 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 			valueRaw, valueOk := msg["value"].(float64)
 			operator, opOk := msg["operator"].(string)
 
+			if playerOperatorCounts[roomID] == nil {
+				playerOperatorCounts[roomID] = make(map[string]map[string]int)
+			}
+			if playerOperatorCounts[roomID][playerID] == nil {
+				playerOperatorCounts[roomID][playerID] = map[string]int{"+": 0, "*": 0}
+			}
+
+			if playerOperatorCounts[roomID][playerID][operator] >= 2 {
+				conn.WriteJSON(map[string]string{"error": "Operator " + operator + " used too many times (max 2)."})
+				continue
+			}
+			playerOperatorCounts[roomID][playerID][operator]++
+
 			if !rowOk || !valueOk || !opOk {
 				conn.WriteJSON(map[string]string{"error": "missing or invalid operation parameters"})
 				continue
@@ -185,11 +201,105 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 				})
 			}
 
+		case "surrender":
+			// 通知: surrender したプレイヤーが敗北
+			var winner int
+			if playerColor == reversi.Black {
+				winner = reversi.White
+			} else {
+				winner = reversi.Black
+			}
+
+			broadcastToRoom(roomID, map[string]interface{}{
+				"type":   "game_over",
+				"winner": winner,
+			})
+
+		case "pass":
+			if playerPassCounts[roomID] == nil {
+				playerPassCounts[roomID] = make(map[string]int)
+			}
+			playerPassCounts[roomID][playerID]++
+
+			if playerPassCounts[roomID][playerID] > 3 {
+				conn.WriteJSON(map[string]string{
+					"error": "You have exceeded the maximum number of passes (3).",
+				})
+				playerPassCounts[roomID][playerID] = 3 // 上限固定
+				continue
+			}
+
+			// 連続パス判定
+			if lastPassPlayer[roomID] != "" && lastPassPlayer[roomID] != playerID {
+				// 2人連続でパスされた → 勝者判定
+				board := game.GetBoard()
+				blackCount, whiteCount := 0, 0
+				for _, row := range board {
+					for _, cell := range row {
+						if cell == reversi.Black {
+							blackCount++
+						} else if cell == reversi.White {
+							whiteCount++
+						}
+					}
+				}
+				winner := -1
+				if blackCount > whiteCount {
+					winner = reversi.Black
+				} else if whiteCount > blackCount {
+					winner = reversi.White
+				}
+				broadcastToRoom(roomID, map[string]interface{}{
+					"type":   "game_over",
+					"winner": winner,
+				})
+			} else {
+				// 手番変更、通知
+				game.PassTurn()
+				lastPassPlayer[roomID] = playerID
+
+				for c, pid := range gameClients[roomID] {
+					color := playerColors[roomID][pid]
+					var boardToSend [8][8]int
+					if game.GetTurn() == color {
+						boardToSend = game.GetBoardWithValidMoves(color)
+					} else {
+						boardToSend = game.GetBoard()
+					}
+
+					c.WriteJSON(map[string]interface{}{
+						"type":       "board_update",
+						"board":      boardToSend,
+						"isYourTurn": (game.GetTurn() == color),
+					})
+				}
+			}
+
 		case "get_valid_moves":
 			moves := game.GetValidMovesMap(playerColor)
 			conn.WriteJSON(map[string]interface{}{
 				"type":      "valid_moves",
 				"moves_map": moves,
+			})
+
+		case "get_status":
+			plusCount := 0
+			mulCount := 0
+			passCount := 0
+
+			if playerOperatorCounts[roomID] != nil && playerOperatorCounts[roomID][playerID] != nil {
+				plusCount = playerOperatorCounts[roomID][playerID]["+"]
+				mulCount = playerOperatorCounts[roomID][playerID]["*"]
+			}
+			if playerPassCounts[roomID] != nil {
+				passCount = playerPassCounts[roomID][playerID]
+			}
+
+			conn.WriteJSON(map[string]interface{}{
+				"type":           "status_info",
+				"remaining_plus": 2 - plusCount,
+				"remaining_mul":  2 - mulCount,
+				"remaining_pass": 3 - passCount,
 			})
 
 		case "exit_room":
