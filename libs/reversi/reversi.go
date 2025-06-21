@@ -106,7 +106,7 @@ func (g *Game) PlaceDisc(player, x, y int) ([8][8]int, error) {
 		return g.Board, errors.New("move out of board bounds")
 	}
 	if player != g.Turn {
-		return g.Board, errors.New("not player's turn")
+		return g.Board, errors.New("not your turn")
 	}
 	if !g.canPlace(player, x, y) {
 		return g.Board, errors.New("invalid move")
