@@ -44,23 +44,26 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 		case "room_init":
 			roomMu.RLock()
 			roomList := []*RoomResponse{}
-			playerID := msg["playerID"]
-			rooms, _ := db.GetRoomsByPlayerID(playerID)
+			rooms, _ := db.GetAllRooms()
 			for _, room := range rooms {
 				player1, _ := db.GetPlayerByID(room.Player1)
+				var player2Name string
+				if room.Player2 != nil {
+					player2, _ := db.GetPlayerByID(*room.Player2)
+					if player2 != nil {
+						player2Name = player2.Name
+					}
+				}
 				roomList = append(roomList, &RoomResponse{
 					ID:      room.ID,
 					Player1: player1.Name,
-					Player2: func() string {
-						if room.Player2 != nil {
-							return *room.Player2
-						}
-						return ""
-					}(),
-					IsFull: room.IsFull,
+					Player2: player2Name,
+					IsFull:  room.IsFull,
 				})
 			}
 			roomMu.RUnlock()
+			// roomListの長さを出力
+			println("roomList length:", len(roomList))
 			conn.WriteJSON(map[string]interface{}{
 				"type":  "room_list",
 				"rooms": roomList,

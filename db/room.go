@@ -28,6 +28,15 @@ func GetRoomsByPlayerID(player1Id string) ([]*model.Room, error) {
 	return rooms, nil
 }
 
+func GetAllRooms() ([]*model.Room, error) {
+	var rooms []*model.Room
+	err := DB.Find(&rooms).Error
+	if err != nil {
+		return nil, err
+	}
+	return rooms, nil
+}
+
 func UpdateRoom(room *model.Room) error {
 	return DB.Save(room).Error
 }
