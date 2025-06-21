@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sync"
 
+	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
 )
 
@@ -14,11 +15,11 @@ var lobbyClients = map[*websocket.Conn]bool{}
 var lobbyBroadcast = make(chan interface{})
 var roomMu sync.RWMutex
 
-// レスポンス用構造体（IDではなくName）
+// レスポンス用構造体（ID）
 type RoomResponse struct {
 	ID      string `json:"id"`
-	Player1 string `json:"player1"`           // name
-	Player2 string `json:"player2,omitempty"` // name
+	Player1 string `json:"player1"`           // id
+	Player2 string `json:"player2,omitempty"` // id
 	IsFull  bool   `json:"isFull"`
 }
 
@@ -71,7 +72,6 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 
 		switch msg["type"] {
 		case "create_room":
-			roomID := msg["roomID"]
 			playerID := msg["playerID"]
 
 			player, err := db.GetPlayerByID(playerID)
@@ -81,12 +81,7 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 			}
 
 			roomMu.Lock()
-			if _, exists := model.Rooms[roomID]; exists {
-				roomMu.Unlock()
-				conn.WriteJSON(map[string]string{"error": "room already exists"})
-				continue
-			}
-
+			roomID := uuid.New().String()
 			room := &model.Room{ID: roomID, Player1: playerID, IsFull: false}
 			model.Rooms[roomID] = room
 			db.CreateRoom(room)
@@ -102,7 +97,7 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 
 		case "join_room":
 			roomID := msg["roomID"]
-			playerID := msg["player"]
+			playerID := msg["playerID"]
 
 			player, err := db.GetPlayerByID(playerID)
 			if err != nil || player == nil {
