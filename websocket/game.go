@@ -2,6 +2,7 @@ package websocket
 
 import (
 	"be-binareversi/db"
+	"be-binareversi/libs/bitop"
 	"be-binareversi/libs/reversi"
 	"encoding/json"
 	"log"
@@ -133,6 +134,54 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 				broadcastToRoom(roomID, map[string]interface{}{
 					"type":   "game_over",
 					"winner": game.GetWinner(),
+				})
+			}
+
+		case "operation":
+			rowRaw, rowOk := msg["row"].(float64)
+			valueRaw, valueOk := msg["value"].(float64)
+			operator, opOk := msg["operator"].(string)
+
+			if !rowOk || !valueOk || !opOk {
+				conn.WriteJSON(map[string]string{"error": "missing or invalid operation parameters"})
+				continue
+			}
+			rowIndex := int(rowRaw)
+			value := int(valueRaw)
+
+			if rowIndex < 0 || rowIndex >= 8 {
+				conn.WriteJSON(map[string]string{"error": "row index out of bounds"})
+				continue
+			}
+
+			// 対象の行を取得し演算
+			row := game.GetBoard()[rowIndex]
+			newRow, err := bitop.ApplyBitOperation(row, value, operator)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"error": err.Error()})
+				continue
+			}
+
+			// 盤面の更新
+			newBoard := game.GetBoard()
+			newBoard[rowIndex] = newRow
+			game.SetBoard(newBoard)
+			game.PassTurn()
+
+			// 全クライアントに board_update を送信
+			for c, pid := range gameClients[roomID] {
+				color := playerColors[roomID][pid]
+				var boardToSend [8][8]int
+				if game.GetTurn() == color {
+					boardToSend = game.GetBoardWithValidMoves(color)
+				} else {
+					boardToSend = game.GetBoard()
+				}
+
+				c.WriteJSON(map[string]interface{}{
+					"type":       "board_update",
+					"board":      boardToSend,
+					"isYourTurn": (game.GetTurn() == color),
 				})
 			}
 
