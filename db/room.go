@@ -19,6 +19,15 @@ func GetRoomByID(id string) (*model.Room, error) {
 	return &room, nil
 }
 
+func GetRoomsByPlayerID(player1Id string) ([]*model.Room, error) {
+	var rooms []*model.Room
+	err := DB.Where("player1 = ?", player1Id).Find(&rooms).Error
+	if err != nil {
+		return nil, err
+	}
+	return rooms, nil
+}
+
 func UpdateRoom(room *model.Room) error {
 	return DB.Save(room).Error
 }

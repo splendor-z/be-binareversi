@@ -34,36 +34,6 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 	}()
 
 	lobbyClients[conn] = true
-
-	// 現在のroom一覧を送信（名前付き）
-	roomMu.RLock()
-	roomList := []*RoomResponse{}
-	for _, room := range model.Rooms {
-		player1, _ := db.GetPlayerByID(room.Player1)
-		player1Name := "unknown"
-		if player1 != nil {
-			player1Name = player1.Name
-		}
-		player2Name := ""
-		if room.Player2 != nil {
-			if p2, _ := db.GetPlayerByID(*room.Player2); p2 != nil {
-				player2Name = p2.Name
-			}
-		}
-		roomList = append(roomList, &RoomResponse{
-			ID:      room.ID,
-			Player1: player1Name,
-			Player2: player2Name,
-			IsFull:  room.IsFull,
-		})
-	}
-	roomMu.RUnlock()
-
-	conn.WriteJSON(map[string]interface{}{
-		"type":  "room_list",
-		"rooms": roomList,
-	})
-
 	for {
 		var msg map[string]string
 		if err := conn.ReadJSON(&msg); err != nil {
@@ -71,6 +41,30 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 		}
 
 		switch msg["type"] {
+		case "room_init":
+			roomMu.RLock()
+			roomList := []*RoomResponse{}
+			playerID := msg["playerID"]
+			rooms, _ := db.GetRoomsByPlayerID(playerID)
+			for _, room := range rooms {
+				player1, _ := db.GetPlayerByID(room.Player1)
+				roomList = append(roomList, &RoomResponse{
+					ID:      room.ID,
+					Player1: player1.Name,
+					Player2: func() string {
+						if room.Player2 != nil {
+							return *room.Player2
+						}
+						return ""
+					}(),
+					IsFull: room.IsFull,
+				})
+			}
+			roomMu.RUnlock()
+			conn.WriteJSON(map[string]interface{}{
+				"type":  "room_list",
+				"rooms": roomList,
+			})
 		case "create_room":
 			playerID := msg["playerID"]
 
