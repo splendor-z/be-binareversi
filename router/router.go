@@ -20,5 +20,5 @@ func Setup(r *gin.Engine) {
 
 	r.POST("/api/register", handler.RegisterPlayer)
 	r.GET("/ws/lobby", handler.LobbyWebSocket)
-	r.GET("/ws/game/:roomID", handler.GameWebSocket)
+	r.GET("/ws/game/:roomID/:playerID", handler.GameWebSocket)
 }
