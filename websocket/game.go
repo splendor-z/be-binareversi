@@ -2,6 +2,8 @@ package websocket
 
 import (
 	"be-binareversi/db"
+	"be-binareversi/libs/reversi"
+
 	"net/http"
 	"time"
 
@@ -9,7 +11,7 @@ import (
 )
 
 var gameClients = make(map[string]map[*websocket.Conn]string)
-var currentTurn = make(map[string]string)
+var gameInstances = make(map[string]*reversi.Game)
 
 func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.Request) {
 	conn, err := Upgrader.Upgrade(w, r, nil)
@@ -34,15 +36,17 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 		return
 	}
 
+	// クライアント登録
 	if gameClients[roomID] == nil {
 		gameClients[roomID] = make(map[*websocket.Conn]string)
 	}
 	gameClients[roomID][conn] = playerID
 
-	// 初期ターン状態（黒番: Player1）
-	if _, exists := currentTurn[roomID]; !exists {
-		currentTurn[roomID] = room.Player1
+	// ゲームインスタンス初期化
+	if _, ok := gameInstances[roomID]; !ok {
+		gameInstances[roomID] = reversi.NewGame(roomID)
 	}
+	game := gameInstances[roomID]
 
 	for {
 		var msg map[string]interface{}
@@ -56,26 +60,48 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 			broadcastToRoom(roomID, map[string]interface{}{
 				"type":     "game_start",
 				"playerID": playerID,
+				"board":    game.GetBoard(),
+				"turn":     game.GetTurn(),
 			})
 
 		case "move":
-			// ターン制御: 今のターンのプレイヤーかどうか
-			if currentTurn[roomID] != playerID {
+			x := int(msg["x"].(float64))
+			y := int(msg["y"].(float64))
+			player := int(msg["player"].(float64))
+
+			// ターンチェック
+			if game.GetTurn() != player {
 				conn.WriteJSON(map[string]string{"error": "not your turn"})
 				continue
 			}
 
-			// 石を置く処理（盤面更新など）ここで入れる
-			// ...
-
-			// ターン交代
-			if room.Player2 != nil && playerID == room.Player1 {
-				currentTurn[roomID] = *room.Player2
-			} else {
-				currentTurn[roomID] = room.Player1
+			board, err := game.PlaceDisc(player, x, y)
+			if err != nil {
+				conn.WriteJSON(map[string]string{"error": err.Error()})
+				continue
 			}
 
-			broadcastToRoom(roomID, msg)
+			broadcastToRoom(roomID, map[string]interface{}{
+				"type":  "board_update",
+				"board": board,
+				"turn":  game.GetTurn(),
+			})
+
+			// ゲーム終了判定
+			if game.IsGameOver() {
+				broadcastToRoom(roomID, map[string]interface{}{
+					"type":   "game_over",
+					"winner": game.GetWinner(),
+				})
+			}
+
+		case "get_valid_moves":
+			player := int(msg["player"].(float64))
+			moves := game.GetValidMovesMap(player)
+			conn.WriteJSON(map[string]interface{}{
+				"type":      "valid_moves",
+				"moves_map": moves,
+			})
 		}
 	}
 }
