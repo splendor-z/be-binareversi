@@ -95,14 +95,16 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 			}
 
 			conn.WriteJSON(map[string]interface{}{
-				"type":       "game_start",
-				"playerID":   playerID,
-				"yourColor":  playerColor,
-				"board":      boardToSend,
-				"isYourTurn": (game.GetTurn() == playerColor),
+				"type":        "game_start",
+				"playerID":    playerID,
+				"yourColor":   playerColor,
+				"board":       boardToSend,
+				"currentTurn": (game.GetTurnCount() + 1) / 2,
+				"isYourTurn":  (game.GetTurn() == playerColor),
 			})
 
 		case "move":
+			game.IncrementTurnCount()
 			xRaw, xOk := msg["x"].(float64)
 			yRaw, yOk := msg["y"].(float64)
 			if !xOk || !yOk {
@@ -127,9 +129,10 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 				}
 
 				c.WriteJSON(map[string]interface{}{
-					"type":       "board_update",
-					"board":      boardToSend,
-					"isYourTurn": (game.GetTurn() == color),
+					"type":        "board_update",
+					"board":       boardToSend,
+					"currentTurn": (game.GetTurnCount() + 1) / 2,
+					"isYourTurn":  (game.GetTurn() == color),
 				})
 			}
 
@@ -141,6 +144,7 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 			}
 
 		case "operation":
+			game.IncrementTurnCount()
 			rowRaw, rowOk := msg["row"].(float64)
 			valueRaw, valueOk := msg["value"].(float64)
 			operator, opOk := msg["operator"].(string)
@@ -195,9 +199,10 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 				}
 
 				c.WriteJSON(map[string]interface{}{
-					"type":       "board_update",
-					"board":      boardToSend,
-					"isYourTurn": (game.GetTurn() == color),
+					"type":        "board_update",
+					"board":       boardToSend,
+					"currentTurn": (game.GetTurnCount() + 1) / 2,
+					"isYourTurn":  (game.GetTurn() == color),
 				})
 			}
 
@@ -254,6 +259,7 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 					"winner": winner,
 				})
 			} else {
+				game.IncrementTurnCount()
 				// 手番変更、通知
 				game.PassTurn()
 				lastPassPlayer[roomID] = playerID
@@ -268,9 +274,10 @@ func HandleGame(roomID string, playerID string, w http.ResponseWriter, r *http.R
 					}
 
 					c.WriteJSON(map[string]interface{}{
-						"type":       "board_update",
-						"board":      boardToSend,
-						"isYourTurn": (game.GetTurn() == color),
+						"type":        "board_update",
+						"board":       boardToSend,
+						"currentTurn": (game.GetTurnCount() + 1) / 2,
+						"isYourTurn":  (game.GetTurn() == color),
 					})
 				}
 			}

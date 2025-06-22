@@ -19,9 +19,10 @@ type Point struct {
 
 // Game はオセロゲームの状態を管理する構造体
 type Game struct {
-	RoomID string    // ゲームのルーム識別子
-	Board  [8][8]int // 盤面の状態
-	Turn   int       // 現在の手番（1=Black, 0=White）
+	RoomID    string    // ゲームのルーム識別子
+	Board     [8][8]int // 盤面の状態
+	Turn      int       // 現在の手番（1=Black, 0=White）
+	TurnCount int       // 手番のカウント
 }
 
 var directions = []Point{
@@ -35,8 +36,9 @@ var directions = []Point{
 // @return 初期化済みの *Game インスタンス
 func NewGame(roomID string) *Game {
 	g := &Game{
-		RoomID: roomID,
-		Turn:   Black,
+		RoomID:    roomID,
+		Turn:      Black,
+		TurnCount: 1,
 	}
 	g.initBoard()
 	return g
@@ -65,6 +67,10 @@ func (g *Game) GetTurn() int {
 	return g.Turn
 }
 
+func (g *Game) GetTurnCount() int {
+	return g.TurnCount
+}
+
 // 手番を相手に交代する
 func (g *Game) PassTurn() {
 	if g.Turn == Black {
@@ -72,6 +78,10 @@ func (g *Game) PassTurn() {
 	} else {
 		g.Turn = Black
 	}
+}
+
+func (g *Game) IncrementTurnCount() {
+	g.TurnCount++
 }
 
 // 指定プレイヤーが置ける合法手をすべて返す
