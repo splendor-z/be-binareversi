@@ -5,6 +5,7 @@ import (
 	"be-binareversi/model"
 	"net/http"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
@@ -17,10 +18,11 @@ var roomMu sync.RWMutex
 
 // レスポンス用構造体（ID）
 type RoomResponse struct {
-	ID      string `json:"id"`
-	Player1 string `json:"player1"`           // id
-	Player2 string `json:"player2,omitempty"` // id
-	IsFull  bool   `json:"isFull"`
+	ID        string    `json:"id"`
+	Player1   string    `json:"player1"`           // id
+	Player2   string    `json:"player2,omitempty"` // id
+	IsFull    bool      `json:"isFull"`
+	CreatedAt time.Time `json:"createdAt"`
 }
 
 func HandleLobby(w http.ResponseWriter, r *http.Request) {
@@ -55,10 +57,11 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 					}
 				}
 				roomList = append(roomList, &RoomResponse{
-					ID:      room.ID,
-					Player1: player1.Name,
-					Player2: player2Name,
-					IsFull:  room.IsFull,
+					ID:        room.ID,
+					Player1:   player1.Name,
+					Player2:   player2Name,
+					IsFull:    room.IsFull,
+					CreatedAt: room.CreatedAt,
 				})
 			}
 			roomMu.RUnlock()
@@ -85,10 +88,11 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 			roomMu.Unlock()
 
 			resp := RoomResponse{
-				ID:      roomID,
-				Player1: player.Name,
-				Player2: "",
-				IsFull:  false,
+				ID:        roomID,
+				Player1:   player.Name,
+				Player2:   "",
+				IsFull:    false,
+				CreatedAt: room.CreatedAt,
 			}
 			lobbyBroadcast <- map[string]interface{}{"type": "room_created", "room": resp}
 
@@ -118,10 +122,11 @@ func HandleLobby(w http.ResponseWriter, r *http.Request) {
 				}
 
 				resp := RoomResponse{
-					ID:      room.ID,
-					Player1: player1Name,
-					Player2: player2,
-					IsFull:  true,
+					ID:        room.ID,
+					Player1:   player1Name,
+					Player2:   player2,
+					IsFull:    true,
+					CreatedAt: room.CreatedAt,
 				}
 				lobbyBroadcast <- map[string]interface{}{"type": "room_updated", "room": resp}
 			} else {
